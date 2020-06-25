@@ -186,7 +186,7 @@
 
 | Field Name | Field Type | Notes |
 |------------|------------|-------|
-| Length     | Int        | 数据包ID+数据 的长度 |
+| Length     | Int        | 数据包总长度 |
 | Packet ID  | Short Enum | 数据包ID |
 | Sequence   | Int        | 顺序编号，为之前发送过的数据包的个数 |
 | Payload    | ByteArray  | 载荷 |
