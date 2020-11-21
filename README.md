@@ -59,7 +59,8 @@
 | Float        | 4     | [Float32](https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/DataView/getFloat32) |
 | Long         | 8     | [BigInt64](https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/DataView/getBigInt64) |
 | Double       | 8     | [Float64](https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/DataView/getFloat64) |
-| String       | ≥ 4   | `Int` + n `Byte`s (UTF8) |
+| Varint       | 1 ~ 4 | |
+| String       | ≥ 1   | `Varint` + n `Byte`s (UTF8) |
 | X[]          | n * size of X | 表示 X 数组 |
 
 -----------------------------------
@@ -70,11 +71,12 @@
 |------------|------------|-------|
 | Packet ID  | Byte       | 数据包编号 |
 | Protocol   | Byte       | 协议版本，当前为1 |
-| Payload    | ByteArray  | 载荷（数据包体） |
+| Payload    | Byte[]     | 载荷（数据包体） |
 
------------------------------------
+<details>
+<summary>Protocol 1</summary>
 
-#### 表明身份(Protocol = 1)
+#### 表明身份
 
 | From | To | Packet ID |
 |:----:|:--:|:---------:|
@@ -88,7 +90,7 @@
 
 -----------------------------------
 
-#### 要求间隔(Protocol = 1)
+#### 要求间隔
 
 | From | To | Packet ID |
 |:----:|:--:|:---------:|
@@ -96,12 +98,12 @@
 
 | Field Name | Field Type | Notes |
 | ---------- | ---------- | ----- |
-| Min Interval | Int   | 最小数据包发送间隔，单位为毫秒 |
-| Max Interval | Int   | 最大数据包发送间隔，单位为毫秒 |
+| Min Interval | Varint   | 最小数据包发送间隔，单位为毫秒 |
+| Max Interval | Varint   | 最大数据包发送间隔，单位为毫秒 |
 
 -----------------------------------
 
-#### 申请任务(Protocol = 1)
+#### 申请任务
 
 | From | To | Packet ID |
 |:----:|:--:|:---------:|
@@ -109,11 +111,11 @@
 
 | Field Name | Field Type | Notes |
 | ---------- | ---------- | ----- |
-| Room Count | Short      | 可监听的房间数量 |
+| Room Count | Varint      | 可监听的房间数量 |
 
 -----------------------------------
 
-#### 任务改变(Protocol = 1)
+#### 改变任务
 
 | From | To | Packet ID |
 |:----:|:--:|:---------:|
@@ -121,13 +123,12 @@
 
 | Field Name | Field Type | Notes |
 | ---------- | ---------- | ----- |
-| Type       | Byte       | 0: 增加房间; 1:变更房间 |
-| Room Count | Short      | 需要增加/变更的房间数量 |
-| Room ID    | Int[]      | 需要增加/变更的房间ID |
+| Room Count | Varint      | 需要增加/变更的房间数量 |
+| Room ID    | String[]      | 需要增加/变更的房间ID |
 
 -----------------------------------
 
-#### 任务确认(Protocol = 1)
+#### 确认任务
 
 | From | To | Packet ID |
 |:----:|:--:|:---------:|
@@ -135,22 +136,22 @@
 
 | Field Name | Field Type | Notes |
 | ---------- | ---------- | ----- |
-| Room Count | Short      | 确认监听的房间数量 |
-| Room ID    | Int[]      | 确认监听的房间ID |
+| Room Count | Varint      | 确认监听的房间数量 |
+| Room ID    | String[]      | 确认监听的房间ID |
 
 -----------------------------------
 
-#### 数据报告(Protocol = 1)
+#### 报告数据
 
 | From | To | Packet ID |
 |:----:|:--:|:---------:|
-| Client | Server | 0x11 |
-| Server | Client | 0x12 |
+| Server | Client | 0x06 |
+| Client | Server | 0x07 |
 
 | Field Name | Field Type | Notes |
 | ---------- | ---------- | ----- |
 | Type       | Byte       | 0:节奏风暴; 1:特殊礼物; 2:天选时刻 |
-| Room ID    | Int        | 房间ID |
+| Room ID    | String     | 房间ID |
 | ID         | String     | 抽奖ID |
 | Time       | Int        | 持续时间 |
 | Detail     | String     | 详细信息，JSON |
@@ -172,6 +173,8 @@
 | Token      | String     | 发送通知所需的令牌 |
 
 -----------------------------------
+
+</details>
 
 ## 安全机制
 
