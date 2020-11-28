@@ -59,7 +59,7 @@
 | Float        | 4     | [Float32](https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/DataView/getFloat32) |
 | Long         | 8     | [BigInt64](https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/DataView/getBigInt64) |
 | Double       | 8     | [Float64](https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/DataView/getFloat64) |
-| Varint       | 1 ~ 4 | |
+| Varint       | 1 ~ 5 | |
 | String       | ≥ 1   | `Varint` + n `Byte`s (UTF8) |
 | X[]          | n * size of X | 表示 X 数组 |
 
