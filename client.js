@@ -252,49 +252,57 @@ class StateSet {
     this.inner &= ~state;
   }
 
+  onlyhas (state) {
+    return this.inner === state;
+  }
+
+  onlyadd (state) {
+    this.inner = state;
+  }
+
   clear () {
     this.inner = 0;
   }
 }
 
 class State extends Number {
-  constructor (value, handle) {
+  constructor (value, handler) {
     super(value);
-    this.handle = handle;
+    this.handler = handler;
   }
 }
 
-State.IDENTITY = new State(1, (packet, ctx) => {
-  throw new Error('IDENTITY State');
-});
-State.REQUIRE_INTERVAL = new State(2, (packet, ctx) => {
+State.REQUIRE_INTERVAL = new State(2, (packet, labour) => {
   const pkt = RequireInterval.from(packet.payload);
   console.log('RequireInterval: ', pkt);
-  ctx.work.minInterval = pkt.minInterval;
-  ctx.work.maxInterval = pkt.maxInterval;
-  ctx.stateSet.clear();
-  ctx.stateSet.add(State.REQUIRE_INTERVAL);
-  ctx.stateSet.add(State.CHANGE_TASK);
-  ctx.stateSet.add(State.REPORT_DATA);
-  ctx.stateSet.add(State.NOTIFY);
-  ctx.send(Packet.wrap(new ApplyForTask(ctx.config.roomCount)));
+  labour.minInterval = pkt.minInterval;
+  labour.maxInterval = pkt.maxInterval;
+  if (this.allowedStates.onlyhas(State.REQUIRE_INTERVAL)) {
+    labour.allowedStates.add(State.CHANGE_TASK);
+    labour.allowedStates.add(State.REPORT_DATA);
+    labour.allowedStates.add(State.NOTIFY);
+    if (labour.roomCount) {
+      labour.sendPayload(new ConfirmTask(labour.roomCount, labour.roomIDs));
+    } else {
+      labour.sendPayload(new ApplyForTask(labour.config.roomCount));
+    }
+  }
 });
-State.APPLY_FOR_TASK = new State(4, (packet, ctx) => {
-  throw new Error('APPLY_FOR_TASK State');
-});
-State.REPORT_DATA = new State(8, (packet, ctx) => {
+
+State.REPORT_DATA = new State(8, (packet, labour) => {
   const pkt = ReportData.from(packet.payload);
   console.log('ReportData: ', pkt);
 });
-State.CHANGE_TASK = new State(16, (packet, ctx) => {
+
+State.CHANGE_TASK = new State(16, (packet, labour) => {
   const pkt = ChangeTask.from(packet.payload);
   console.log(pkt);
-  ctx.send(Packet.wrap(new ConfirmTask(pkt.roomCount, pkt.roomIDs)));
+  labour.roomCount = pkt.roomCount;
+  labour.roomIDs = pkt.roomIDs;
+  labour.sendPayload(new ConfirmTask(labour.roomCount, labour.roomIDs));
 });
-State.CONFIRM_TASK = new State(32, (packet, ctx) => {
-  throw new Error('CONFIRM_TASK State');
-});
-State.NOTIFY = new State(64, (packet, ctx) => {
+
+State.NOTIFY = new State(64, (packet, labour) => {
   const pkt = Notify.from(packet.payload);
   console.log('Notify: ', pkt);
 });
@@ -305,33 +313,47 @@ const StateMap = new Map([
   [6, State.REPORT_DATA],
   [0xFF, State.NOTIFY]]);
 
-class BLSMSocket extends window.WebSocket {
-  constructor (url, config) {
-    super(url);
-    this.binaryType = 'arraybuffer';
-    this.work = {};
+class Labour {
+  constructor (config) {
     this.config = config;
-    this.stateSet = new StateSet();
-    this.onopen = function (ev) {
-      this.send(Packet.wrap(new Identity(0, config.token)));
-      this.stateSet.add(State.REQUIRE_INTERVAL);
+    this.allowedStates = new StateSet();
+  }
+
+  start () {
+    if (this.ws) return;
+    const ws = new WebSocket(this.config.url); // eslint-disable-line no-undef
+    this.ws = ws;
+    ws.binaryType = 'arraybuffer';
+    ws.onopen = ev => {
+      this.sendPayload(new Identity(0, this.config.token));
+      this.allowedStates.onlyadd(State.REQUIRE_INTERVAL);
     };
-    this.onmessage = function (ev) {
+    ws.onmessage = ev => {
       const pkt = Packet.from(ev.data);
-      if (StateMap.has(pkt.id)) {
-        const state = StateMap.get(pkt.id);
-        if (this.stateSet.has(state)) {
-          state.handle.call(this, pkt, this);
+      const state = StateMap.get(pkt.id);
+      if (state !== undefined) {
+        if (this.allowedStates.has(state)) {
+          state.handler.call(this, pkt, this);
           return;
         }
+        console.error('Disallowed Packet');
+        return;
       }
       console.error('Invalid Packet');
     };
+    ws.onclose = ev => {
+      this.ws = null;
+      console.warn('Disconnected');
+    };
+  }
+
+  stop () {
+    this.ws.close();
+  }
+
+  sendPayload (payload, protocol) {
+    this.ws.send(Packet.wrap(payload, protocol).toArrayBuffer());
   }
 }
 
-const ws = new BLSMSocket('http://localhost:8181');
-
-ws.onclose = function (ev) {
-  console.log('BLSMSocket closed');
-};
+const labour = new Labour({ url: 'http://localhost:8181' });
