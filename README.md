@@ -61,15 +61,19 @@
 
 | Name         | Bytes | Notes |
 |--------------|:-----:|-------|
-| Boolean      | 1     |       |
-| Byte         | 1     | [Int8](https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/DataView/getInt8)  |
-| Short        | 2     | [Int16](https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/DataView/getInt16) |
-| Int          | 4     | [Int32](https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/DataView/getInt32) |
-| Float        | 4     | [Float32](https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/DataView/getFloat32) |
-| Long         | 8     | [BigInt64](https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/DataView/getBigInt64) |
-| Double       | 8     | [Float64](https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/DataView/getFloat64) |
-| Varint       | 1 ~ 5 | |
-| String       | ≥ 1   | `Varint` + n `Byte`s (UTF8) |
+| Bool         | 1     | 0: false; 1: true |
+| Uint8        | 1     | [Uint8](https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/DataView/getUint8)  |
+| Int8        | 1     | [Int8](https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/DataView/getInt8)  |
+| Uint16       | 2     | [Uint16](https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/DataView/getUint16) |
+| Int16       | 2     | [Int16](https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/DataView/getInt16) |
+| Uint32       | 4     | [Uint32](https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/DataView/getUint32) |
+| Int32       | 4     | [Int32](https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/DataView/getInt32) |
+| Uint64       | 8     | [BigUint64](https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/DataView/getBigUint64) |
+| Int64       | 8     | [BigInt64](https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/DataView/getBigInt64) |
+| Float32      | 4     | [Float32](https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/DataView/getFloat32) |
+| Float64      | 8     | [Float64](https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/DataView/getFloat64) |
+| Varint       | 1 ~ 5 | 有效取值与 `Uint32` 一致 |
+| String       | ≥ 1   | `Varint` + n Bytes (UTF8) |
 | X[]          | n * size of X | 表示 X 数组 |
 
 -----------------------------------
@@ -78,8 +82,8 @@
 
 | Field Name | Field Type | Notes |
 |------------|------------|-------|
-| Packet ID  | Byte       | 数据包编号 |
-| Protocol   | Byte       | 协议版本，当前为1 |
+| Packet ID  | Uint8      | 数据包编号 |
+| Protocol   | Uint8      | 协议版本，当前为1 |
 | Payload    | Byte[]     | 载荷（数据包体） |
 
 <details>
@@ -94,7 +98,7 @@
 
 | Field Name | Field Type | Notes |
 | ---------- | ---------- | ----- |
-| Identity   | Byte       | 0: 客户端; 1:服务端 2:管理员 |
+| Identity   | Uint8      | 0: 客户端; 1:服务端 2:管理员 |
 | Token      | String     | 特定的令牌 |
 
 -----------------------------------
@@ -120,7 +124,7 @@
 
 | Field Name | Field Type | Notes |
 | ---------- | ---------- | ----- |
-| Room Count | Varint      | 可监听的房间数量 |
+| Room Count | Varint     | 可监听的房间数量 |
 
 -----------------------------------
 
@@ -132,8 +136,8 @@
 
 | Field Name | Field Type | Notes |
 | ---------- | ---------- | ----- |
-| Room Count | Varint      | 需要增加/变更的房间数量 |
-| Room ID    | String[]      | 需要增加/变更的房间ID |
+| Room Count | Varint     | 需要增加/变更的房间数量 |
+| Room ID    | String[]   | 需要增加/变更的房间ID |
 
 -----------------------------------
 
@@ -145,8 +149,8 @@
 
 | Field Name | Field Type | Notes |
 | ---------- | ---------- | ----- |
-| Room Count | Varint      | 确认监听的房间数量 |
-| Room ID    | String[]      | 确认监听的房间ID |
+| Room Count | Varint     | 确认监听的房间数量 |
+| Room ID    | String[]   | 确认监听的房间ID |
 
 -----------------------------------
 
@@ -159,10 +163,10 @@
 
 | Field Name | Field Type | Notes |
 | ---------- | ---------- | ----- |
-| Type       | Byte       | 0:节奏风暴; 1:特殊礼物; 2:天选时刻 |
+| Type       | Uint8      | 0:节奏风暴; 1:特殊礼物; 2:天选时刻 |
 | Room ID    | String     | 房间ID |
 | ID         | String     | 抽奖ID |
-| Time       | Int        | 持续时间 |
+| Time       | Varint     | 持续时间 |
 | Detail     | String     | 详细信息，JSON |
 
 -----------------------------------
@@ -177,7 +181,7 @@
 
 | Field Name | Field Type | Notes |
 | ---------- | ---------- | ----- |
-| Type       | Byte       | 通知类型 |
+| Type       | Uint8      | 通知类型 |
 | Message    | String     | 消息内容 |
 | Token      | String     | 发送通知所需的令牌 |
 

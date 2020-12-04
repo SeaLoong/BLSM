@@ -1,41 +1,223 @@
 
-class DataView extends DataView {
-  getVarint (byteOffset) {
+class Bytes {
+  static from (buffer) {
+    return new Bytes(buffer);
+  }
+
+  constructor (size) {
+    if (size instanceof ArrayBuffer) {
+      this.buffer = size;
+    } else {
+      this.buffer = new ArrayBuffer(10);
+    }
+    this.dv = new DataView(this.buffer);
+    this.rpos = 0;
+    this.wpos = 0;
+  }
+
+  remaining () {
+    return this.buffer.byteLength - this.rpos;
+  }
+
+  hasRemaining () {
+    return this.remaining() > 0;
+  }
+
+  advanceRpos (n) {
+    this.rpos += n;
+  }
+
+  advanceWpos (n) {
+    this.wpos += n;
+    if (this.wpos > this.buffer.byteLength) {
+      const newBuffer = new ArrayBuffer(Math.ceil(1.5 * this.wpos));
+      copyTo(this.buffer, newBuffer);
+      this.buffer = newBuffer;
+      this.dv = new DataView(this.buffer);
+    }
+  }
+
+  toArrayBuffer () {
+    return this.buffer.slice(0, this.wpos);
+  }
+
+  getArrayBuffer (length) {
+    let r;
+    if (length > 0) {
+      r = this.buffer.slice(this.wpos, this.wpos + length);
+    } else {
+      r = this.buffer.slice(this.wpos);
+    }
+    this.advanceRpos(r.byteLength);
+    return r;
+  }
+
+  putArrayBuffer (buffer) {
+    this.advanceWpos(buffer.byteLength);
+    copyTo(buffer, this.buffer, this.wpos - buffer.byteLength);
+  }
+
+  getBool () {
+    const r = this.dv.getUint8(this.rpos);
+    this.advanceRpos(1);
+    return r > 0;
+  }
+
+  putBool (v) {
+    this.advanceWpos(1);
+    this.dv.setUint8(this.wpos, v ? 1 : 0);
+  }
+
+  getUint8 () {
+    const r = this.dv.getUint8(this.rpos);
+    this.advanceRpos(1);
+    return r;
+  }
+
+  putUint8 (v) {
+    this.advanceWpos(1);
+    this.dv.setUint8(this.wpos, v);
+  }
+
+  getInt8 () {
+    const r = this.dv.getInt8(this.rpos);
+    this.advanceRpos(1);
+    return r;
+  }
+
+  putInt8 (v) {
+    this.advanceWpos(1);
+    this.dv.setInt8(this.wpos, v);
+  }
+
+  getUint16 () {
+    const r = this.dv.getUint16(this.rpos);
+    this.advanceRpos(2);
+    return r;
+  }
+
+  putUint16 (v) {
+    this.advanceWpos(2);
+    this.dv.setUint16(this.wpos, v);
+  }
+
+  getInt16 () {
+    const r = this.dv.getInt16(this.rpos);
+    this.advanceRpos(2);
+    return r;
+  }
+
+  putInt16 (v) {
+    this.advanceWpos(2);
+    this.dv.setInt16(this.wpos, v);
+  }
+
+  getUint32 () {
+    const r = this.dv.getUint32(this.rpos);
+    this.advanceRpos(4);
+    return r;
+  }
+
+  putUint32 (v) {
+    this.advanceWpos(4);
+    this.dv.setUint32(this.wpos, v);
+  }
+
+  getInt32 () {
+    const r = this.dv.getInt32(this.rpos);
+    this.advanceRpos(4);
+    return r;
+  }
+
+  putInt32 (v) {
+    this.advanceWpos(4);
+    this.dv.setInt32(this.wpos, v);
+  }
+
+  getUint64 () {
+    const r = this.dv.getBigUint64(this.rpos);
+    this.advanceRpos(8);
+    return r;
+  }
+
+  putUint64 (v) {
+    this.advanceWpos(8);
+    this.dv.setBigUint64(this.wpos, v);
+  }
+
+  getInt64 () {
+    const r = this.dv.getBigInt64(this.rpos);
+    this.advanceRpos(8);
+    return r;
+  }
+
+  putInt64 (v) {
+    this.advanceWpos(8);
+    this.dv.setBigInt64(this.wpos, v);
+  }
+
+  getFloat32 () {
+    const r = this.dv.getFloat32(this.rpos);
+    this.advanceRpos(4);
+    return r;
+  }
+
+  putFloat32 (v) {
+    this.advanceWpos(4);
+    this.dv.setFloat32(this.wpos, v);
+  }
+
+  getFloat64 () {
+    const r = this.dv.getFloat64(this.rpos);
+    this.advanceRpos(8);
+    return r;
+  }
+
+  putFloat64 (v) {
+    this.advanceWpos(8);
+    this.dv.setFloat64(this.wpos, v);
+  }
+
+  getVarint () {
     let v = 0;
     let i = 0;
-    let b;
-    do {
-      b = this.getUint8(byteOffset + i);
+    let b = 0x80;
+    while (i < 5 && (b & 0x80)) {
+      b = this.getUint8();
       v |= (b & 0x7F) << (i * 7);
-      i++;
-    } while (b & 0x80 && i < 5);
-    return [v, i];
+      i += 1;
+    }
+    return v;
   }
 
-  setVarint (byteOffset, value) {
+  putVarint (v) {
     let i = 0;
-    while (value & ~0x7F && i < 4) {
-      this.setUint8(byteOffset + i, value & 0x7F | 0x80);
-      value >>>= 7;
+    while ((v >>> 7) && i < 4) {
+      this.putUint8(v & 0x7F | 0x80);
+      v >>>= 7;
       i++;
     }
-    this.setUint8(byteOffset + i, value & 0x7F);
-    return i + 1;
+    this.putUint8(v & 0x7F);
   }
 
-  getString (byteOffset) {
-    const [len, pos] = this.getVarint(byteOffset);
-    return [uintToString(new Uint8Array(this.buffer, this.byteOffset + byteOffset + pos, len)), pos + len];
-  }
-
-  setString (byteOffset, string) {
-    const arr = stringToUint(string);
-    const len = arr.byteLength;
-    const pos = this.setVarint(byteOffset, len);
-    for (let i = 0; i < len; i++) {
-      this.setUint8(this.byteOffset + byteOffset + pos + i, arr[i]);
+  getString () {
+    try {
+      const len = this.getVarint();
+      const s = uintToString(new Uint8Array(this.getArrayBuffer(len)));
+      this.advanceRpos(len);
+      return s;
+    } catch {
+      return null;
     }
-    return pos + len;
+  }
+
+  putString (s) {
+    const arr = stringToUint(s);
+    const len = arr.byteLength;
+    this.putVarint(len);
+    for (let i = 0; i < len; i++) {
+      this.putUint8(arr[i]);
+    }
   }
 }
 
@@ -47,6 +229,43 @@ function uintToString (arr) {
   return decodeURIComponent(escape(String.fromCharCode.apply(null, arr)));
 }
 
+function copyTo (source, dest, destOffset = 0) {
+  let nextOffset = 0;
+  let leftBytes = source.byteLength;
+  [8, 4, 2, 1].forEach(wordSize => {
+    const result = copyToWith(wordSize, source, dest, destOffset, nextOffset, leftBytes);
+    nextOffset = result.nextOffset;
+    leftBytes = result.leftBytes;
+  });
+}
+
+function copyToWith (wordSize, source, dest, destOffset, nextOffset, leftBytes) {
+  let ViewClass = Uint8Array;
+  switch (wordSize) {
+    case 8:
+      ViewClass = Float64Array;
+      break;
+    case 4:
+      ViewClass = Float32Array;
+      break;
+    case 2:
+      ViewClass = Uint16Array;
+      break;
+    default:
+      ViewClass = Uint8Array;
+      break;
+  }
+  const dvSource = new ViewClass(source, nextOffset, Math.trunc(leftBytes / wordSize));
+  const dvDest = new ViewClass(dest, destOffset + nextOffset, Math.trunc(leftBytes / wordSize));
+  for (let i = 0; i < dvDest.length; i++) {
+    dvDest[i] = dvSource[i];
+  }
+  return {
+    nextOffset: dvSource.byteOffset + dvSource.byteLength,
+    leftBytes: source.byteLength - (dvSource.byteOffset + dvSource.byteLength)
+  };
+}
+
 class Packet {
   constructor (id, protocol, payload) {
     this.id = id;
@@ -56,26 +275,40 @@ class Packet {
 
   toArrayBuffer () {
     const payloadBuf = (this.payload && this.payload.toArrayBuffer && this.payload.toArrayBuffer()) || this.payload;
-    const buf = new ArrayBuffer(2 + (payloadBuf instanceof ArrayBuffer ? payloadBuf.byteLength : 0));
-    const dv = new DataView(buf);
-    dv.setUint8(0, this.id);
-    dv.setUint8(1, this.protocol);
-    if (payloadBuf instanceof ArrayBuffer) {
-      const arr = new Uint8Array(payloadBuf);
-      for (let i = 0; i < arr.length; i++) {
-        dv.setUint8(2 + i, arr[i]);
-      }
-    }
-    return buf;
+    const bytes = new Bytes();
+    bytes.putUint8(this.id);
+    bytes.putUint8(this.protocol);
+    bytes.putArrayBuffer(payloadBuf);
+    return bytes.toArrayBuffer();
   }
 
   static from (buffer) {
-    const dv = new DataView(buffer);
-    return new Packet(dv.getUint8(0), dv.getUint8(1), buffer.slice(2));
+    const bytes = new Bytes(buffer);
+    const id = bytes.getUint8();
+    const protocol = bytes.getUint8();
+    const payload = bytes.getArrayBuffer();
+    let Clazz;
+    switch (id) {
+      case 2:
+        Clazz = RequireInterval;
+        break;
+      case 4:
+        Clazz = ChangeTask;
+        break;
+      case 6:
+        Clazz = ReportData;
+        break;
+      case 0xFF:
+        Clazz = Notify;
+        break;
+      default:
+        throw new Error('Unexpected payload!');
+    }
+    return new Packet(id, protocol, Clazz.from(payload));
   }
 
   static wrap (payload, protocol) {
-    let id = 0;
+    let id;
     if (payload instanceof Identity) id = 1;
     else if (payload instanceof ApplyForTask) id = 3;
     else if (payload instanceof ConfirmTask) id = 5;
@@ -94,11 +327,10 @@ class Identity {
   }
 
   toArrayBuffer () {
-    const buf = new ArrayBuffer(6 + (this.token ? this.token.length : 0));
-    const dv = new DataView(buf);
-    dv.setUint8(0, this.identity);
-    const len = dv.setString(1, this.token);
-    return buf.slice(0, 1 + len);
+    const bytes = new Bytes();
+    bytes.putUint8(this.identity);
+    bytes.putString(this.token);
+    return bytes.toArrayBuffer();
   }
 }
 
@@ -109,9 +341,9 @@ class RequireInterval {
   }
 
   static from (buffer) {
-    const dv = new DataView(buffer);
-    const [minInterval, l1] = dv.getVarint(0);
-    const [maxInterval] = dv.getVarint(l1);
+    const bytes = new Bytes(buffer);
+    const minInterval = bytes.getVarint();
+    const maxInterval = bytes.getVarint();
     return new RequireInterval(minInterval, maxInterval);
   }
 }
@@ -122,85 +354,73 @@ class ApplyForTask {
   }
 
   toArrayBuffer () {
-    const buf = new ArrayBuffer(5);
-    const dv = new DataView(buf);
-    const len = dv.setVarint(0, this.roomCount);
-    return buf.slice(0, len);
+    const bytes = new Bytes();
+    bytes.putVarint(this.roomCount);
+    return bytes.toArrayBuffer();
   }
 }
 
 class ChangeTask {
-  constructor (roomCount, roomIDs) {
+  constructor (roomCount, roomIds) {
     this.roomCount = roomCount;
-    this.roomIDs = roomIDs;
+    this.roomIds = roomIds;
   }
 
   static from (buffer) {
-    const dv = new DataView(buffer);
-    const [roomCount, l1] = dv.getVarint(0);
-    const roomIDs = [];
-    let p = l1;
+    const bytes = new Bytes(buffer);
+    const roomCount = bytes.getVarint();
+    const roomIds = [];
     for (let i = 0; i < roomCount; i++) {
-      const [s, l] = dv.getString(p);
-      p += l;
-      roomIDs.push(s);
+      const s = bytes.getString();
+      roomIds.push(s);
     }
-    return new ChangeTask(roomCount, roomIDs);
+    return new ChangeTask(roomCount, roomIds);
   }
 }
 
 class ConfirmTask {
-  constructor (roomCount, roomIDs) {
+  constructor (roomCount, roomIds) {
     this.roomCount = roomCount;
-    this.roomIDs = roomIDs;
+    this.roomIds = roomIds;
   }
 
   toArrayBuffer () {
-    const buf = new ArrayBuffer(5 + 5 * (this.roomIDs ? this.roomIDs.length : 0));
-    const dv = new DataView(buf);
-    let p = dv.setVarint(0, this.roomCount);
-    for (let i = 0; i < this.roomIDs.length; i++) {
-      p += dv.setVarint(p, this.roomIDs[i]);
+    const bytes = new Bytes();
+    bytes.putVarint(this.roomCount);
+    for (let i = 0; i < this.roomIds.length; i++) {
+      bytes.putString(this.roomIds[i]);
     }
-    return buf.slice(0, p);
+    return bytes.toArrayBuffer();
   }
 }
 
 class ReportData {
-  constructor (type, roomID, id, time, detail) {
+  constructor (type, roomId, id, time, detail) {
     this.type = type;
-    this.roomID = roomID;
+    this.roomId = roomId;
     this.id = id;
     this.time = time;
     this.detail = detail;
   }
 
   toArrayBuffer () {
-    const buf = new ArrayBuffer(21 + (this.roomID ? this.roomID.length : 0) + (this.id ? this.id.length : 0) + (this.detail ? this.detail.length : 0));
-    const dv = new DataView(buf);
-    let p = 0;
-    dv.setUint8(p, this.type);
-    p += 1;
-    p += dv.setString(p, this.roomID);
-    p += dv.setString(p, this.id);
-    p += dv.setVarint(p, this.time);
-    p += dv.setString(p, this.detail);
-    return buf.slice(0, p);
+    const bytes = new Bytes();
+    bytes.putUint8(this.type);
+    bytes.putString(this.roomId);
+    bytes.putString(this.id);
+    bytes.putVarint(this.time);
+    bytes.putString(JSON.stringify(this.detail));
+    return bytes.toArrayBuffer();
   }
 
   static from (buffer) {
-    const dv = new DataView(buffer);
-    const type = dv.getUint8(0);
-    let p = 1;
-    const [roomID, l1] = dv.getString(p);
-    p += l1;
-    const [id, l2] = dv.getString(p);
-    p += l2;
-    const [time, l3] = dv.getVarint(p);
-    p += l3;
-    const [detail, l4] = dv.getString(p);
-    p += l4;
-    return new ReportData(type, roomID, id, time, detail);
+    const bytes = new Bytes(buffer);
+    const type = bytes.getUint8();
+    const roomId = bytes.getString();
+    const id = bytes.getString();
+    const time = bytes.getVarint();
+    const detail = JSON.parse(bytes.getString());
+    return new ReportData(type, roomId, id, time, detail);
   }
 }
 
@@ -212,24 +432,18 @@ class Notify {
   }
 
   toArrayBuffer () {
-    const buf = new ArrayBuffer(11 + (this.message ? this.message.length : 0) + (this.token ? this.token.length : 0));
-    const dv = new DataView(buf);
-    let p = 0;
-    dv.setUint8(p, this.type);
-    p += 1;
-    p += dv.setString(p, this.message);
-    p += dv.setString(p, this.token);
-    return buf.slice(0, p);
+    const bytes = new Bytes();
+    bytes.putUint8(this.type);
+    bytes.putString(this.message);
+    bytes.putString(this.token);
+    return bytes.toArrayBuffer();
   }
 
   static from (buffer) {
-    const dv = new DataView(buffer);
-    const type = dv.getUint8(0);
-    let p = 1;
-    const [message, l1] = dv.getString(p);
-    p += l1;
-    const [token, l2] = dv.getString(p);
-    p += l2;
+    const bytes = new Bytes(buffer);
+    const type = bytes.getUint8();
+    const message = bytes.getString();
+    const token = bytes.getString();
     return new Notify(type, message, token);
   }
 }
@@ -282,7 +496,7 @@ State.REQUIRE_INTERVAL = new State(2, (packet, labour) => {
     labour.allowedStates.add(State.REPORT_DATA);
     labour.allowedStates.add(State.NOTIFY);
     if (labour.roomCount) {
-      labour.sendPayload(new ConfirmTask(labour.roomCount, labour.roomIDs));
+      labour.sendPayload(new ConfirmTask(labour.roomCount, labour.roomIds));
     } else {
       labour.sendPayload(new ApplyForTask(labour.config.roomCount));
     }
@@ -298,8 +512,8 @@ State.CHANGE_TASK = new State(16, (packet, labour) => {
   const pkt = ChangeTask.from(packet.payload);
   console.log(pkt);
   labour.roomCount = pkt.roomCount;
-  labour.roomIDs = pkt.roomIDs;
-  labour.sendPayload(new ConfirmTask(labour.roomCount, labour.roomIDs));
+  labour.roomIds = pkt.roomIds;
+  labour.sendPayload(new ConfirmTask(labour.roomCount, labour.roomIds));
 });
 
 State.NOTIFY = new State(64, (packet, labour) => {
