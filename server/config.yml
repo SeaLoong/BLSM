@@ -1,0 +1,10 @@
+ip: 0.0.0.0
+port: 8181
+rate_limit:
+  interval: 10000
+  max_burst: 6
+log:
+  enable_console: true
+  enable_file: true
+  file_directory: ./logs
+  level: INFO

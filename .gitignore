@@ -29,3 +29,4 @@ target
 java/
 json/
 .*/
+node_modules/
