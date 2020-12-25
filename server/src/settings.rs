@@ -11,7 +11,9 @@ pub struct Settings {
     pub path: String,
     pub ip: IpAddr,
     pub port: u16,
+    pub token_files: TokenFiles,
     pub rate_limit: RateLimit,
+    pub guard: Guard,
     pub log: Log,
 }
 
@@ -22,8 +24,27 @@ impl Default for Settings {
             path: String::from("config.yml"),
             ip: IpAddr::from([0, 0, 0, 0]),
             port: 8181,
+            token_files: TokenFiles::default(),
             rate_limit: RateLimit::default(),
+            guard: Guard::default(),
             log: Log::default(),
+        }
+    }
+}
+
+#[derive(Debug, Hash, PartialEq, Eq, Clone)]
+pub struct TokenFiles {
+    pub client: String,
+    pub server: String,
+    pub admin: String,
+}
+
+impl Default for TokenFiles {
+    fn default() -> Self {
+        TokenFiles {
+            client: String::from("./client_tokens.txt"),
+            server: String::from("./server_tokens.txt"),
+            admin: String::from("./admin_tokens.txt"),
         }
     }
 }
@@ -39,6 +60,23 @@ impl Default for RateLimit {
         RateLimit {
             interval: 10000,
             max_burst: 6,
+        }
+    }
+}
+
+#[derive(Debug, Hash, PartialEq, Eq, Clone)]
+pub struct Guard {
+    pub kick_count: i32,
+    pub ban_time: i64,
+    pub record_file: String,
+}
+
+impl Default for Guard {
+    fn default() -> Self {
+        Guard {
+            kick_count: 10,
+            ban_time: 24,
+            record_file: String::from("./guard_record"),
         }
     }
 }
@@ -130,12 +168,36 @@ impl Settings {
             self.port = x as u16;
         }
 
+        if let Ok(map) = cfg.get_table("token_files") {
+            if let Some(x) = get_str_from_map(&map, "client") {
+                self.token_files.client = x;
+            }
+            if let Some(x) = get_str_from_map(&map, "server") {
+                self.token_files.server = x;
+            }
+            if let Some(x) = get_str_from_map(&map, "admin") {
+                self.token_files.admin = x;
+            }
+        }
+
         if let Ok(map) = cfg.get_table("rate_limit") {
             if let Some(x) = get_int_from_map(&map, "interval") {
                 self.rate_limit.interval = x as u32;
             }
             if let Some(x) = get_int_from_map(&map, "max_burst") {
                 self.rate_limit.max_burst = x as u32;
+            }
+        }
+
+        if let Ok(map) = cfg.get_table("guard") {
+            if let Some(x) = get_int_from_map(&map, "kick_count") {
+                self.guard.kick_count = x as i32;
+            }
+            if let Some(x) = get_int_from_map(&map, "ban_time") {
+                self.guard.ban_time = x;
+            }
+            if let Some(x) = get_str_from_map(&map, "record_file") {
+                self.guard.record_file = x;
             }
         }
 
@@ -159,9 +221,17 @@ impl Settings {
 const DEFAULT_CONFIG_FILE: &str = "\
 ip: 0.0.0.0
 port: 8181
+token_files:
+  client: ./client_tokens.txt
+  server: ./server_tokens.txt
+  admin: ./admin_tokens.txt
 rate_limit:
   interval: 10000
   max_burst: 6
+guard:
+  kick_count: 10
+  ban_time: 24
+  record_file: ./guard_record
 log:
   enable_console: true
   enable_file: true

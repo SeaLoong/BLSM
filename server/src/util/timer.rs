@@ -19,7 +19,6 @@ impl<A> TimerFn<A>
 where
     A: Actor,
 {
-    /// Creates a new `TimerFunc` with the given duration.
     pub fn new<F>(timeout: Duration, f: fn(&mut A, &mut A::Context)) -> TimerFn<A> {
         TimerFn {
             f,
@@ -51,8 +50,6 @@ where
         }
     }
 }
-
-struct TimerFnBox {}
 
 pub struct Timer<A, C>
 where

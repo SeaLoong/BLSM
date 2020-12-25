@@ -1,14 +1,14 @@
-#![feature(async_closure)]
 #![feature(once_cell)]
 #![allow(unused)]
 
+use crate::guard::Guard;
 use crate::labour::structs::ConnectionInfo;
 use crate::settings::Settings;
-use crate::util::DisconnectActor;
 use actix_web::{get, post, web, App, Error, HttpRequest, HttpResponse, HttpServer, Responder};
 use actix_web_actors::ws;
 use log::{info, warn};
 use std::io::stdin;
+use std::lazy::SyncLazy;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -20,18 +20,22 @@ mod settings;
 mod state;
 mod util;
 
-#[actix_web::main]
-async fn main() -> std::io::Result<()> {
+static SETTINGS: SyncLazy<Settings> = SyncLazy::new(|| {
     let matches = get_matches();
     let (mut settings, cfg) = settings::Settings::new(&matches).expect("Can't read config file!");
     logger::init_logger(&settings);
     settings.done(matches, cfg);
-    let settings = web::Data::new(settings);
+    settings
+});
 
+static GUARD: SyncLazy<Guard> = SyncLazy::new(|| Guard::new(&SETTINGS));
+
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
     info!("Bilibili Live Synergetic Monitor starts to run...");
+    let settings = &SETTINGS;
     let addr = SocketAddr::new(settings.ip, settings.port);
-
-    let server = HttpServer::new(move || App::new().app_data(settings.clone()).service(ws_index))
+    let server = HttpServer::new(move || App::new().service(ws_index))
         .bind(&addr)?
         .run();
 
@@ -57,7 +61,7 @@ async fn main() -> std::io::Result<()> {
 }
 
 fn get_matches<'a>() -> clap::ArgMatches<'a> {
-    use clap::*;
+    use clap::{clap_app, crate_authors, crate_description, crate_name, crate_version};
     let app = clap_app!((crate_name!()) =>
         (version: crate_version!())
         (author: crate_authors!())
@@ -72,20 +76,19 @@ fn get_matches<'a>() -> clap::ArgMatches<'a> {
 }
 
 #[get("/")]
-async fn ws_index(
-    settings: web::Data<Settings>,
-    req: HttpRequest,
-    payload: web::Payload,
-) -> impl Responder {
+async fn ws_index(req: HttpRequest, payload: web::Payload) -> impl Responder {
     if let Some(addr) = req.peer_addr() {
-        info!("Connection incoming: {}", addr);
-        ws::start(
-            labour::Labour::new(ConnectionInfo::new(&req.connection_info(), addr), &settings),
+        if !&GUARD.check_addr(&addr) {
+            return None;
+        }
+        info!("Connection incoming: '{}'.", addr);
+        Some(ws::start(
+            labour::Labour::new(ConnectionInfo::new(&req.connection_info(), addr), &SETTINGS),
             &req,
             payload,
-        )
+        ))
     } else {
         warn!("Unexpected!!! No SocketAddr request!!!");
-        ws::start(DisconnectActor, &req, payload)
+        None
     }
 }

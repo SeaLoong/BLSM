@@ -1,13 +1,11 @@
-use actix::{Actor, ActorContext, Running};
+use crate::guard::Guard;
+use crate::settings::Settings;
+use actix::{Actor, ActorContext, Running, StreamHandler};
 use actix_web_actors::ws;
 
-pub struct DisconnectActor;
+pub mod timer;
 
-impl Actor for DisconnectActor {
-    type Context = ws::WebsocketContext<Self>;
-
-    fn started(&mut self, ctx: &mut Self::Context) {
-        ctx.close(None);
-        ctx.stop();
-    }
+pub struct WebData {
+    pub settings: Settings,
+    pub guard: Guard,
 }

@@ -1,9 +1,5 @@
 
 class Bytes {
-  static from (buffer) {
-    return new Bytes(buffer);
-  }
-
   constructor (size = 0) {
     if (size instanceof ArrayBuffer) {
       this.buffer = size;
@@ -245,7 +241,7 @@ function copy (source, dest) {
   let len = Math.min(source.byteLength, dest.byteLength);
   let pos = 0;
   const t = Math.floor(len / 8);
-  for (let i = 0; i < t; i++) dest.setFloat64(i * 8, source.getFloat64(i));
+  for (let i = 0; i < t; i++) dest.setFloat64(i * 8, source.getFloat64(i * 8));
   pos += t * 8;
   len -= t * 8;
   if (len >= 4) {
@@ -259,14 +255,14 @@ function copy (source, dest) {
     len -= 2;
   }
   if (len >= 1) {
-    dest.setUint8(pos, source.setUint8(pos));
+    dest.setUint8(pos, source.getUint8(pos));
     pos += 1;
     len -= 1;
   }
 }
 
 const constants = {
-  id: {
+  packetId: {
     SHOW_IDENTITY: 0x01,
     RATE_LIMIT: 0x02,
     TASK_APPLICATION: 0x03,
@@ -312,7 +308,7 @@ class Packet {
     const id = bytes.getVarInt();
     const buf = bytes.getArrayBuffer(length);
     let Clazz;
-    const { SHOW_IDENTITY, RATE_LIMIT, TASK_APPLICATION, TASK_CHANGE, TASK_CONFIRM, DATA_REPORT, NOTIFICATION } = constants.id;
+    const { SHOW_IDENTITY, RATE_LIMIT, TASK_APPLICATION, TASK_CHANGE, TASK_CONFIRM, DATA_REPORT, NOTIFICATION } = constants.packetId;
     switch (id) {
       case SHOW_IDENTITY:
         Clazz = ShowIdentity;
@@ -342,7 +338,7 @@ class Packet {
   }
 
   static wrap (data) {
-    const { SHOW_IDENTITY, RATE_LIMIT, TASK_APPLICATION, TASK_CHANGE, TASK_CONFIRM, DATA_REPORT, NOTIFICATION } = constants.id;
+    const { SHOW_IDENTITY, RATE_LIMIT, TASK_APPLICATION, TASK_CHANGE, TASK_CONFIRM, DATA_REPORT, NOTIFICATION } = constants.packetId;
     let id;
     if (data instanceof ShowIdentity) id = SHOW_IDENTITY;
     else if (data instanceof RateLimit) id = RATE_LIMIT;
@@ -503,14 +499,6 @@ class TokenBucket {
     return false;
   }
 
-  async cosume (cnt = 1) {
-    if (this.maxBurst < cnt) return false;
-    while (!this.tryCosume(cnt)) {
-      await new Promise(resolve => setTimeout(resolve, this.interval));
-    }
-    return true;
-  }
-
   produce () {
     const fillCnt = Math.floor((Date.now() - this.lastFillTime) / this.interval);
     if (fillCnt > 0) {
@@ -526,53 +514,47 @@ class TokenBucket {
   }
 }
 
-const HANDSHAKING = 1;
-const WORKING = 2;
+const state = {
+  HANDSHAKING: 1,
+  WORKING: 2
+};
 
-const ID_HANDLE_MAP = (() => {
-  const { SHOW_IDENTITY, RATE_LIMIT, TASK_APPLICATION, TASK_CHANGE, TASK_CONFIRM, DATA_REPORT, NOTIFICATION } = constants.id;
+const HANDLE_MAP = (() => {
+  const { HANDSHAKING, WORKING } = state;
+  const { RATE_LIMIT, TASK_CHANGE, DATA_REPORT, NOTIFICATION } = constants.packetId;
   return new Map([
-    [SHOW_IDENTITY, (labour, data) => {}],
     [RATE_LIMIT, (labour, data) => {
-      data = RateLimit.fromArrayBuffer(data);
-      console.log('RateLimit: ', data);
+      console.log('State: ', labour.state, ', RateLimit: ', data);
       labour.tokenBucket.interval = data.interval;
       labour.tokenBucket.maxBurst = data.maxBurst;
       if (labour.state === HANDSHAKING) {
         const previousTask = labour.config.previousTask;
-        if (previousTask) {
+        if (previousTask && previousTask.roomCount !== undefined && previousTask.roomIds instanceof Array) {
           labour.sendData(new TaskConfirm(previousTask.roomCount, previousTask.roomIds));
           labour.state = WORKING;
-          labour.permitIds.add(TASK_CHANGE);
-          labour.permitIds.add(DATA_REPORT);
-          labour.permitIds.add(NOTIFICATION);
         } else {
           labour.sendData(new TaskApplication(labour.config.roomCount));
-          labour.permitIds.add(TASK_CHANGE);
         }
       }
     }],
-    [TASK_APPLICATION, (labour, data) => {}],
     [TASK_CHANGE, (labour, data) => {
-      data = TaskChange.fromArrayBuffer(data);
-      console.log('TaskChange', data);
+      console.log('State: ', labour.state, ', TaskChange', data);
       labour.roomCount = data.roomCount;
       labour.roomIds = data.roomIds;
       labour.sendData(new TaskConfirm(labour.roomCount, labour.roomIds));
       if (labour.state === HANDSHAKING) {
         labour.state = WORKING;
-        labour.permitIds.add(DATA_REPORT);
-        labour.permitIds.add(NOTIFICATION);
       }
     }],
-    [TASK_CONFIRM, (labour, data) => {}],
     [DATA_REPORT, (labour, data) => {
-      data = DataReport.fromArrayBuffer(data);
-      console.log('DataReport: ', data);
+      if (labour.state === WORKING) {
+        console.log('State: ', labour.state, ', DataReport: ', data);
+      }
     }],
     [NOTIFICATION, (labour, data) => {
-      data = Notification.fromArrayBuffer(data);
-      console.log('Notification: ', data);
+      if (labour.state === WORKING) {
+        console.log('State: ', labour.state, ', Notification: ', data);
+      }
     }]
   ]);
 })();
@@ -580,20 +562,18 @@ const ID_HANDLE_MAP = (() => {
 class Labour {
   constructor (config = {}) {
     this.config = config;
-    this.state = HANDSHAKING;
-    this.permitIds = new Set();
-    this.tokenBucket = new TokenBucket();
-    this.sendBuffer = null;
   }
 
   start () {
     if (this.ws) return;
     const ws = new WebSocket(this.config.url); // eslint-disable-line no-undef
     this.ws = ws;
+    this.state = state.HANDSHAKING;
+    this.tokenBucket = new TokenBucket();
+    this.sendBuffer = null;
     ws.binaryType = 'arraybuffer';
     ws.onopen = ev => {
-      this.sendData(new ShowIdentity(1, this.config.token));
-      this.permitIds.add(constants.id.RATE_LIMIT);
+      this.sendData(new ShowIdentity(constants.show_identity.category.CLIENT, this.config.token));
     };
     ws.onmessage = ev => {
       let buffer = ev.data;
@@ -602,16 +582,18 @@ class Labour {
         const pkt = r[0];
         buffer = r[1];
         console.log('pkt:', pkt);
-        if (this.permitIds.has(pkt.id)) {
-          ID_HANDLE_MAP.get(pkt.id).call(this, this, pkt);
+        const handle = HANDLE_MAP.get(pkt.id);
+        if (handle instanceof Function) {
+          handle.call(this, this, pkt.data);
           continue;
         }
-        console.error('Unexpected Packet!');
+        console.error('unexpected packet!');
+        ws.close();
       }
     };
     ws.onclose = ev => {
       this.ws = null;
-      console.warn('Disconnected', ev);
+      console.warn('disconnected', ev);
     };
   }
 
@@ -626,6 +608,7 @@ class Labour {
     console.log(data);
     if (this.sendBuffer) {
       this.sendBuffer.putArrayBuffer(data);
+      console.log(this.sendBuffer);
       return;
     }
     if (this.tokenBucket.tryCosume()) {
@@ -637,6 +620,7 @@ class Labour {
         if (!this.sendBuffer) return;
         if (this.tokenBucket.tryCosume()) {
           this.ws.send(this.sendBuffer.toArrayBuffer());
+          console.log(this.sendBuffer);
           this.sendBuffer = null;
           return;
         }
@@ -647,10 +631,10 @@ class Labour {
   }
 }
 
-function createLabour () {
+function createLabour (token) {
   return new Labour({
     url: 'ws://localhost:8181',
-    token: 'test_token',
+    token: token || Math.random().toString(16),
     previousTask: {}
   });
 }

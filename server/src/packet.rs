@@ -13,8 +13,13 @@ pub trait PacketData {
     fn write_to_bytes(&self, bytes: &mut BytesMut);
 }
 
+pub trait ToPacket {
+    fn to_packet(&self) -> Packet;
+}
+
 /* ====================================== */
 
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Packet {
     pub length: VarInt,
     pub id: VarInt,
@@ -41,40 +46,22 @@ impl PacketData for Packet {
     }
 }
 
-mod type_id {
-    use crate::packet::{
-        DataReport, Notification, RateLimit, ShowIdentity, TaskApplication, TaskChange, TaskConfirm,
-    };
-    use std::any::TypeId;
-
-    pub const SHOW_IDENTITY: TypeId = TypeId::of::<ShowIdentity>();
-    pub const RATE_LIMIT: TypeId = TypeId::of::<RateLimit>();
-    pub const TASK_APPLICATION: TypeId = TypeId::of::<TaskApplication>();
-    pub const TASK_CHANGE: TypeId = TypeId::of::<TaskChange>();
-    pub const TASK_CONFIRM: TypeId = TypeId::of::<TaskConfirm>();
-    pub const DATA_REPORT: TypeId = TypeId::of::<DataReport>();
-    pub const NOTIFICATION: TypeId = TypeId::of::<Notification>();
-}
-
 impl Packet {
     #[inline]
-    pub fn wrap(data: Box<dyn PacketData>) -> Packet {
+    pub fn to_bytes(&self) -> Bytes {
         let mut bytes = BytesMut::new();
-        data.write_to_bytes(&mut bytes);
-        Packet {
-            length: bytes.len() as VarInt,
-            id: match data.type_id() {
-                type_id::SHOW_IDENTITY => id::SHOW_IDENTITY,
-                type_id::RATE_LIMIT => id::RATE_LIMIT,
-                type_id::TASK_APPLICATION => id::TASK_APPLICATION,
-                type_id::TASK_CHANGE => id::TASK_CHANGE,
-                type_id::TASK_CONFIRM => id::TASK_CONFIRM,
-                type_id::DATA_REPORT => id::DATA_REPORT,
-                type_id::NOTIFICATION => id::NOTIFICATION,
-                _ => 0,
-            },
-            data: bytes.freeze(),
-        }
+        self.write_to_bytes(&mut bytes);
+        bytes.freeze()
+    }
+}
+
+fn to_packet<T: PacketData>(data: &T, id: VarInt) -> Packet {
+    let mut bytes = BytesMut::new();
+    data.write_to_bytes(&mut bytes);
+    Packet {
+        length: bytes.len() as VarInt,
+        id,
+        data: bytes.freeze(),
     }
 }
 
@@ -98,6 +85,13 @@ impl PacketData for ShowIdentity {
     fn write_to_bytes(&self, bytes: &mut BytesMut) {
         bytes.put_varint(self.category);
         bytes.put_string(&self.token);
+    }
+}
+
+impl ToPacket for ShowIdentity {
+    #[inline]
+    fn to_packet(&self) -> Packet {
+        to_packet(self, id::SHOW_IDENTITY)
     }
 }
 
@@ -127,6 +121,13 @@ impl PacketData for RateLimit {
     }
 }
 
+impl ToPacket for RateLimit {
+    #[inline]
+    fn to_packet(&self) -> Packet {
+        to_packet(self, id::RATE_LIMIT)
+    }
+}
+
 /* ====================================== */
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -144,6 +145,13 @@ impl PacketData for TaskApplication {
     #[inline]
     fn write_to_bytes(&self, bytes: &mut BytesMut) {
         bytes.put_varint(self.room_count);
+    }
+}
+
+impl ToPacket for TaskApplication {
+    #[inline]
+    fn to_packet(&self) -> Packet {
+        to_packet(self, id::TASK_APPLICATION)
     }
 }
 
@@ -178,6 +186,13 @@ impl PacketData for TaskChange {
     }
 }
 
+impl ToPacket for TaskChange {
+    #[inline]
+    fn to_packet(&self) -> Packet {
+        to_packet(self, id::TASK_CHANGE)
+    }
+}
+
 /* ====================================== */
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -206,6 +221,13 @@ impl PacketData for TaskConfirm {
         for s in &self.room_ids {
             bytes.put_string(s);
         }
+    }
+}
+
+impl ToPacket for TaskConfirm {
+    #[inline]
+    fn to_packet(&self) -> Packet {
+        to_packet(self, id::TASK_CONFIRM)
     }
 }
 
@@ -247,6 +269,13 @@ impl PacketData for DataReport {
     }
 }
 
+impl ToPacket for DataReport {
+    #[inline]
+    fn to_packet(&self) -> Packet {
+        to_packet(self, id::DATA_REPORT)
+    }
+}
+
 /* ====================================== */
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -274,6 +303,13 @@ impl PacketData for Notification {
         bytes.put_varint(self.category);
         bytes.put_string(&self.message);
         bytes.put_string(&self.token);
+    }
+}
+
+impl ToPacket for Notification {
+    #[inline]
+    fn to_packet(&self) -> Packet {
+        to_packet(self, id::NOTIFICATION)
     }
 }
 
