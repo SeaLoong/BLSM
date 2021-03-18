@@ -1,8 +1,9 @@
 use std::net::{IpAddr, SocketAddr};
 
+use crate::config;
+use crate::config::Settings;
 use crate::labour::Labour;
-use crate::settings;
-use crate::settings::Settings;
+use crate::redis::Connection;
 use actix::ActorContext;
 use actix_web_actors::ws::{CloseReason, WebsocketContext};
 use chrono::{Local, NaiveDate, NaiveDateTime};
@@ -14,36 +15,26 @@ pub mod reason;
 
 #[derive(Debug)]
 pub struct Guard {
-    settings: settings::Guard,
-    kicked_ips: DashMap<IpAddr, i32>,
-    kicked_tokens: DashMap<String, i32>,
-    banned_ips: DashMap<IpAddr, i64>,
-    banned_tokens: DashMap<String, i64>,
+    cfg: config::guard::Guard,
+    con: Connection,
 }
 
 impl Guard {
-    pub fn new(settings: &Settings) -> Guard {
-        Guard {
-            settings: settings.guard.clone(),
-            kicked_ips: DashMap::new(),
-            kicked_tokens: DashMap::new(),
-            banned_ips: DashMap::new(),
-            banned_tokens: DashMap::new(),
-        }
+    #[inline]
+    pub fn new(cfg: config::guard::Guard, con: Connection) -> Guard {
+        Guard { cfg, con }
     }
 
-    pub fn check_addr(&self, addr: &SocketAddr) -> bool {
-        if let Some(t) = self.banned_ips.get(&addr.ip()) {
-            return t.value() < &Local::now().timestamp();
-        }
-        true
+    /// 检验IP地址是否被ban
+    #[inline]
+    pub async fn check_addr(&self, addr: &SocketAddr) -> bool {
+        self.con.blacklist_get(&addr.to_string())
     }
 
-    pub fn check_token(&self, token: &String) -> bool {
-        if let Some(t) = self.banned_tokens.get(token) {
-            return t.value() < &Local::now().timestamp();
-        }
-        true
+    /// 检验Token是否被ban
+    #[inline]
+    pub async fn check_token(&self, token: &String) -> bool {
+        self.con.blacklist_get(token)
     }
 
     pub fn kick(
@@ -52,6 +43,9 @@ impl Guard {
         ctx: &mut WebsocketContext<Labour>,
         reason: reason::kick::Reason,
     ) {
+        if ctx.state().stopping() {
+            return;
+        }
         let reason = reason::kick::CODE_MAP.get(&reason).unwrap().value().clone();
         let ip = &labour.connection_info.peer_addr.ip();
         let v1 = if let Some(v) = self.kicked_ips.get(ip) {
@@ -97,6 +91,9 @@ impl Guard {
         ctx: &mut WebsocketContext<Labour>,
         reason: reason::ban::Reason,
     ) {
+        if ctx.state().stopping() {
+            return;
+        }
         let reason = reason::ban::CODE_MAP.get(&reason).unwrap().value().clone();
         let t = Local::now().timestamp() + self.settings.ban_time * 3600;
         let ip = &labour.connection_info.peer_addr.ip();
@@ -129,6 +126,9 @@ impl Guard {
     }
 
     pub fn sack(&self, ctx: &mut WebsocketContext<Labour>, reason: Option<CloseReason>) {
+        if ctx.state().stopping() {
+            return;
+        }
         ctx.close(reason);
         ctx.stop();
     }

@@ -1,50 +1,21 @@
-use crate::config::{RateLimit, Settings};
-use crate::guard::{reason, Guard};
-use crate::labour::structs::{ConnectionInfo, State};
-use crate::packet;
+use crate::handler::Handler;
+use crate::labour::structs::ConnectionInfo;
 use crate::packet::structs::VarInt;
-use crate::packet::{constants::id, PacketData};
 use crate::util::timer::Timer;
-use actix::{Actor, ActorContext, AsyncContext, Running, SpawnHandle, StreamHandler};
-use actix_web::web::{Buf, Bytes};
 use actix_web_actors::ws;
-use actix_web_actors::ws::{CloseCode, CloseReason};
-use chrono::Local;
-use dashmap::DashMap;
 use governor::state::{InMemoryState, NotKeyed};
-use governor::{clock, Quota, RateLimiter};
-use log::info;
-use std::cmp::max;
-use std::collections::{HashMap, HashSet};
-use std::lazy::SyncLazy;
-use std::num::NonZeroU32;
-use std::sync::{Arc, RwLock};
-use std::time::Duration;
+use governor::{clock, RateLimiter};
+use std::collections::HashSet;
+use std::sync::Arc;
 
-pub mod handle;
-pub mod structs;
+pub mod client;
+pub mod unknown;
 
-/// PacketID -> Handle 的映射
-static HANDLE_MAP: SyncLazy<
-    HashMap<VarInt, fn(&mut Labour, &mut Bytes, &mut ws::WebsocketContext<Labour>)>,
-> = SyncLazy::new(|| {
-    let mut m: HashMap<VarInt, fn(&mut Labour, &mut Bytes, &mut ws::WebsocketContext<Labour>)> =
-        HashMap::new();
-    m.insert(id::SHOW_IDENTITY, handle::show_identity);
-    m.insert(id::RATE_LIMIT, handle::rate_limit);
-    m.insert(id::TASK_APPLICATION, handle::task_application);
-    m.insert(id::TASK_CHANGE, handle::task_change);
-    m.insert(id::TASK_CONFIRM, handle::task_confirm);
-    m.insert(id::NOTIFICATION, handle::notification);
-    m
-});
-
-pub struct Labour {
+pub struct User {
     pub connection_info: ConnectionInfo,
-    pub category: Option<VarInt>,
     pub token: String,
     pub rooms: Vec<Arc<String>>,
-    settings: Arc<RwLock<Settings>>,
+    handler: Box<dyn Handler<Self>>,
     guard: Arc<RwLock<Guard>>,
     state: State,
     rate_limit: RateLimit,
@@ -54,7 +25,7 @@ pub struct Labour {
     heartbeat_timer: Timer<Self, ws::WebsocketContext<Self>>,
 }
 
-impl Labour {
+impl User {
     pub fn new(
         connection_info: ConnectionInfo,
         settings: Arc<RwLock<Settings>>,
@@ -184,6 +155,3 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Labour {
         }
     }
 }
-
-#[test]
-fn test() {}

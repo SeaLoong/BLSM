@@ -12,7 +12,6 @@ guard:
   ban_time: 24
   record_file: ./guard_record
 log:
-  enable_console: true
   enable_file: true
   file_directory: ./logs
   level: INFO

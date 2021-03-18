@@ -1,44 +1,50 @@
 #![feature(once_cell)]
 #![allow(unused)]
 
-use crate::guard::Guard;
-use crate::labour::structs::ConnectionInfo;
-use crate::settings::Settings;
-use actix_web::{get, post, web, App, Error, HttpRequest, HttpResponse, HttpServer, Responder};
-use actix_web_actors::ws;
-use log::{info, warn};
 use std::io::stdin;
 use std::lazy::SyncLazy;
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::pin::Pin;
+use std::sync::{Arc, RwLock};
 
+use actix_web::{get, post, web, App, Error, HttpRequest, HttpResponse, HttpServer, Responder};
+use actix_web_actors::ws;
+use log::{info, warn};
+
+use crate::config::Settings;
+use crate::guard::Guard;
+use crate::labour::structs::ConnectionInfo;
+use crate::util::WebData;
+
+mod config;
 mod guard;
+mod handler;
+mod http;
 mod labour;
 mod logger;
 mod packet;
-mod settings;
+mod pool;
+mod redis;
 mod state;
+mod user;
 mod util;
-
-static SETTINGS: SyncLazy<Settings> = SyncLazy::new(|| {
-    let matches = get_matches();
-    let (mut settings, cfg) = settings::Settings::new(&matches).expect("Can't read config file!");
-    logger::init_logger(&settings);
-    settings.done(matches, cfg);
-    settings
-});
-
-static GUARD: SyncLazy<Guard> = SyncLazy::new(|| Guard::new(&SETTINGS));
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    let mut cfg = config::load_and_save("config.yml");
+    logger::init_logger(&cfg.log);
+    config::display(&cfg);
+    let addr = SocketAddr::new(cfg.ip, cfg.port);
+    let mut guard = Arc::new(RwLock::new(Guard::new(&settings)));
+    let mut settings = Arc::new(RwLock::new(settings));
+    let data = web::Data::new(WebData {
+        settings: settings.clone(),
+        guard: guard.clone(),
+    });
     info!("Bilibili Live Synergetic Monitor starts to run...");
-    let settings = &SETTINGS;
-    let addr = SocketAddr::new(settings.ip, settings.port);
-    let server = HttpServer::new(move || App::new().service(ws_index))
+    let server = HttpServer::new(move || App::new().app_data(data.clone()).service(ws_index))
         .bind(&addr)?
         .run();
-
     loop {
         let mut s = String::new();
         stdin().read_line(&mut s)?;
@@ -51,6 +57,13 @@ async fn main() -> std::io::Result<()> {
                     info!("Bilibili Live Synergetic Monitor has stopped.");
                     return Ok(());
                 }
+                "reload" => {
+                    println!("Reloading config file...");
+                    *settings.write().unwrap() =
+                        config::Settings::new("config.yml").expect("Can't read config file!");
+                    display_config(&settings.read().unwrap());
+                    println!("Reloaded!");
+                }
                 "help" => {
                     println!("stop: Close all connections and stop server.");
                 }
@@ -60,34 +73,28 @@ async fn main() -> std::io::Result<()> {
     }
 }
 
-fn get_matches<'a>() -> clap::ArgMatches<'a> {
-    use clap::{clap_app, crate_authors, crate_description, crate_name, crate_version};
-    let app = clap_app!((crate_name!()) =>
-        (version: crate_version!())
-        (author: crate_authors!())
-        (about: crate_description!())
-        (@arg debug: --debug "Enable debug mode.")
-        (@arg config: -c --config +takes_value "(Optional) Path to config file.")
-        (@arg ip: -i --ip +takes_value "(Optional) IP address to listen. Default value: 0.0.0.0")
-        (@arg port: -u --username +takes_value "(Optional) Port to listen. Default value: 8181")
-        (@arg interval: --interval +takes_value "(Optional) Minimum interval (ms) to receive request. Default value: 10000")
-    );
-    app.get_matches()
-}
-
 #[get("/")]
-async fn ws_index(req: HttpRequest, payload: web::Payload) -> impl Responder {
+async fn ws_index(
+    data: web::Data<WebData>,
+    req: HttpRequest,
+    payload: web::Payload,
+) -> impl Responder {
     if let Some(addr) = req.peer_addr() {
-        if !&GUARD.check_addr(&addr) {
+        if !&data.guard.read().unwrap().check_addr(&addr) {
             return None;
         }
         info!("Connection incoming: '{}'.", addr);
         Some(ws::start(
-            labour::Labour::new(ConnectionInfo::new(&req.connection_info(), addr), &SETTINGS),
+            labour::Labour::new(
+                ConnectionInfo::new(&req.connection_info(), addr),
+                data.settings.clone(),
+                data.guard.clone(),
+            ),
             &req,
             payload,
         ))
     } else {
+        // should be unreachable
         warn!("Unexpected!!! No SocketAddr request!!!");
         None
     }

@@ -2,7 +2,9 @@ use crate::guard::reason;
 use crate::labour::structs::State;
 use crate::labour::Labour;
 use crate::packet::structs::VarInt;
-use crate::packet::{Packet, PacketData, RateLimit, ShowIdentity, ToPacket};
+use crate::packet::{
+    constants, Packet, PacketData, RateLimit, ShowIdentity, TaskApplication, TaskChange, ToPacket,
+};
 use actix::Actor;
 use actix_web::web::{Bytes, BytesMut};
 use actix_web_actors::ws;
@@ -11,16 +13,26 @@ use log::info;
 use std::collections::HashMap;
 use std::lazy::SyncLazy;
 
-pub fn show_identity(labour: &mut Labour, data: &mut Bytes, ctx: &mut WebsocketContext<Labour>) {
-    if labour.state == State::Handshaking && labour.category.is_none() {
-        if let Some(data) = ShowIdentity::read_from_bytes(data) {
-            labour.category = Some(data.category);
-            labour.token = data.token;
-            info!("Labour '{}' is employed.", labour.token);
+pub fn show_identity(labour: &mut Labour, data: &mut Bytes, ctx: &mut WebsocketContext<Labour>) {}
+
+pub fn rate_limit(labour: &mut Labour, data: &mut Bytes, ctx: &mut WebsocketContext<Labour>) {
+    labour.kick(ctx, reason::kick::Reason::UnexpectedPacket);
+}
+
+pub fn task_application(labour: &mut Labour, data: &mut Bytes, ctx: &mut WebsocketContext<Labour>) {
+    if labour.state == State::Working
+        && labour.category == Some(constants::show_identity::category::CLIENT)
+    {
+        if let Some(data) = TaskApplication::read_from_bytes(data) {
+            info!(
+                "Labour '{}' is applying task: {} rooms.",
+                labour.token, data.room_count
+            );
+
             ctx.binary(
-                RateLimit {
-                    interval: labour.rate_limit.interval as VarInt,
-                    max_burst: labour.rate_limit.max_burst as VarInt,
+                TaskChange {
+                    room_count: 0,
+                    room_ids: vec![],
                 }
                 .to_packet()
                 .to_bytes(),
@@ -32,12 +44,9 @@ pub fn show_identity(labour: &mut Labour, data: &mut Bytes, ctx: &mut WebsocketC
     labour.kick(ctx, reason::kick::Reason::UnexpectedPacket);
 }
 
-pub fn rate_limit(labour: &mut Labour, data: &mut Bytes, ctx: &mut WebsocketContext<Labour>) {}
-
-pub fn task_application(labour: &mut Labour, data: &mut Bytes, ctx: &mut WebsocketContext<Labour>) {
+pub fn task_change(labour: &mut Labour, data: &mut Bytes, ctx: &mut WebsocketContext<Labour>) {
+    labour.kick(ctx, reason::kick::Reason::UnexpectedPacket);
 }
-
-pub fn task_change(labour: &mut Labour, data: &mut Bytes, ctx: &mut WebsocketContext<Labour>) {}
 
 pub fn task_confirm(labour: &mut Labour, data: &mut Bytes, ctx: &mut WebsocketContext<Labour>) {}
 

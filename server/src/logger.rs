@@ -1,14 +1,14 @@
 #![allow(unused_must_use, dead_code, unused_variables, unused_imports)]
 #![feature(ip)]
 
-use crate::settings::Settings;
+use crate::config;
 use log::{
     LevelFilter,
     LevelFilter::{Debug, Info},
 };
 use std::str::FromStr;
 
-pub fn init_logger(settings: &Settings) {
+pub fn init_logger(log_cfg: &config::log::Log) {
     use log4rs::{
         append::{
             console::ConsoleAppender,
@@ -23,19 +23,13 @@ pub fn init_logger(settings: &Settings) {
         config::{Appender, Config, Root},
         encode::pattern::PatternEncoder,
     };
-    let stdout = if settings.debug || settings.log.enable_console {
-        Some(
-            ConsoleAppender::builder()
-                .encoder(Box::new(PatternEncoder::new(
-                    "{h([{d(%Y-%m-%d %H:%M:%S)}][{l}][{T}] {m}{n})}",
-                )))
-                .build(),
-        )
-    } else {
-        None
-    };
-    let logfile = if settings.log.enable_file {
-        let directory = &settings.log.file_directory;
+    let stdout = ConsoleAppender::builder()
+        .encoder(Box::new(PatternEncoder::new(
+            "{h([{d(%Y-%m-%d %H:%M:%S)}][{l}][{T}] {m}{n})}",
+        )))
+        .build();
+    let logfile = if cfg.enable_file {
+        let directory = &cfg.file_directory;
         Some(
             RollingFileAppender::builder()
                 .encoder(Box::new(PatternEncoder::new(
@@ -59,22 +53,12 @@ pub fn init_logger(settings: &Settings) {
         None
     };
 
-    if stdout.is_none() && logfile.is_none() {
-        return;
-    }
-
-    let level = if settings.debug {
-        Debug
-    } else {
-        LevelFilter::from_str(&*settings.log.level).unwrap_or(Info)
-    };
+    let level = LevelFilter::from_str(&*cfg.level).unwrap_or(Info);
 
     let mut config = Config::builder();
     let mut root = Root::builder();
-    if let Some(stdout) = stdout {
-        config = config.appender(Appender::builder().build("stdout", Box::new(stdout)));
-        root = root.appender("stdout");
-    }
+    config = config.appender(Appender::builder().build("stdout", Box::new(stdout)));
+    root = root.appender("stdout");
     if let Some(logfile) = logfile {
         config = config.appender(Appender::builder().build("logfile", Box::new(logfile)));
         root = root.appender("logfile");
@@ -90,7 +74,7 @@ pub fn init_logger(settings: &Settings) {
 #[test]
 fn test() {
     use log::{debug, error, info, trace, warn};
-    init_logger(&Settings::default());
+    init_logger(&config::log::Log::default());
     trace!("trace test");
     debug!("debug test");
     info!("info test");

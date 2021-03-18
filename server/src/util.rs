@@ -1,11 +1,12 @@
+use crate::config::Settings;
 use crate::guard::Guard;
-use crate::settings::Settings;
 use actix::{Actor, ActorContext, Running, StreamHandler};
 use actix_web_actors::ws;
+use std::sync::{Arc, RwLock};
 
 pub mod timer;
 
 pub struct WebData {
-    pub settings: Settings,
-    pub guard: Guard,
+    pub settings: Arc<RwLock<Settings>>,
+    pub guard: Arc<RwLock<Guard>>,
 }
